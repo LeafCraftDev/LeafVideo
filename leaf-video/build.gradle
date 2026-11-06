@@ -1,0 +1,19 @@
+version = '0.1.0'
+
+tasks.named('compileJava', JavaCompile).configure {
+    options.release = 17
+}
+
+tasks.withType(Jar).configureEach { jarTask ->
+    jarTask.from(project.projectDir) {
+        include 'LICENSE'
+        include 'README.md'
+        include 'CHANGELOG.md'
+        include 'docs/**/*.md'
+        into 'META-INF/leaf-video'
+    }
+}
+
+dependencies {
+    testImplementation 'com.github.luben:zstd-jni:1.5.6-3'
+}

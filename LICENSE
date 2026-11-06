@@ -1,0 +1,34 @@
+MIT License
+
+Copyright (c) 2026 Leaf26 / LeafCraft (https://github.com/LeafCraftDev/Video)
+
+This MIT License governs the Tier 1 Open Standard & Core Reference (`leaf-video/`):
+  - The `.lcv` / Matroska `V_LCV1` Binary Interface Control Document (`leaf-video/docs/ICD.md`, `LCV-ICD-1.0`);
+  - The governing Architecture Decision Records (`leaf-video-ADR-001`, `leaf-video-ADR-002`); and
+  - The `:leaf-video` Java 17+ reference codec, packetizer, and compressed-domain transformer
+    (`io.github.dailystruggle.leafvideo.LcvPrimitives`, `LcvCubeCodec`, `LcvStreamContainer`,
+    `LcvMkvPacketizer`, `LcvOnDiskTransformer`, `LcvCorruptTileException`).
+
+Any developer, streamer, video editor, broadcast pipeline, NLE plugin, or hardware vendor may
+freely inspect, compile, embed, or interoperate with `.lcv` / `V_LCV1` streams and `:leaf-video`
+under the terms below without royalty or license-server lock-in. Commercial Tier 2 Studio GUI
+installers and Tier 3 Native SIMD/GPU & Wireless UEP SDK binaries under `resource/LeafVideo/`
+are licensed separately under `resource/LeafVideo/LICENSE` (`LicenseRef-LeafCraft-Commercial`).
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

@@ -1,0 +1,57 @@
+LeafCraft Commercial Software License (LicenseRef-LeafCraft-Commercial)
+
+Copyright (c) 2026 Leaf26 / LeafCraft. All rights reserved.
+
+This license governs the commercial Tier 2 Creator & Editor Studio Binaries
+(OBS Studio "Single-Encode Multi-Crop & Crash Guard" GUI Dock/Installer and
+NLE Instant-Scrub & Crash-Resumable Render Plugins for DaVinci Resolve,
+Premiere Pro, After Effects, and Blender) and the Tier 3 High-Performance
+Native SIMD/GPU (AVX2 / NEON / Vulkan / CUDA) & HARSH_RF_UEP Wireless
+Telemetry SDK distributions under resource/LeafVideo/ ("the Software").
+
+1. Commercial Creator, Studio & OEM License Grant
+Subject to purchase of a valid license or SDK subscription from an authorized
+LeafCraft storefront (such as BuiltByBit, Patreon, or a direct LeafCraft B2B
+distribution agreement), the copyright holder grants the purchaser ("Licensee")
+a non-exclusive, worldwide license to install, configure, and execute the
+Software on creator workstations, post-production studio nodes, broadcast
+pipelines, or licensed robotics/drone hardware owned or operated by the
+Licensee, including commercially monetized channels, studios, and deployments.
+
+2. Restrictions on Redistribution & Resale
+Except as expressly permitted in Section 3 (Open .lcv / V_LCV1 Format &
+:leaf-video Reference Codec Interoperability Carve-Out), the Licensee may NOT:
+  (a) redistribute, republish, upload, mirror, leak, sublicense, rent, lease,
+      or resell the commercial Software installers, compiled native libraries,
+      plugin binaries, or proprietary source files;
+  (b) publish modified or unmodified copies of the commercial Software on
+      public package registries, code hosting platforms, or plugin marketplaces; or
+  (c) remove or alter copyright notices, license files, or attribution metadata
+      packaged within the Software.
+
+3. Open .lcv / V_LCV1 Format Specification & :leaf-video Interoperability Carve-Out
+  (a) Media & Recording Data Ownership: The Licensee retains 100% ownership
+      and unrestricted control over all video recordings, crops, proxies, and
+      telemetry streams (.lcv, .mkv V_LCV1, .mp4, and backups) created,
+      cropped, stripped, compacted, or recovered by the Software.
+  (b) Open Format Specification & Reference Codec (MIT): The .lcv / V_LCV1
+      (LeafCraft Video) binary format Interface Control Document
+      (leaf-video/docs/ICD.md, routed from resource/LeafVideo/docs/ICD.md,
+      LCV-ICD-1.0), the governing Architecture Decision Records
+      (leaf-video-ADR-001, leaf-video-ADR-002), and the Java 17+ reference
+      codec library (leaf-video/, package io.github.dailystruggle.leafvideo)
+      are licensed separately under the MIT License (leaf-video/LICENSE).
+      Any developer, streamer, video editor, NLE vendor, media player (ffmpeg,
+      VLC), or hardware integrator may freely inspect, compile, implement, or
+      reverse-engineer the .lcv / V_LCV1 binary format and :leaf-video for
+      reading, writing, transforming, or interoperating with .lcv streams
+      without royalty or license-server lock-in.
+
+4. Disclaimer of Warranty & Limitation of Liability
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
