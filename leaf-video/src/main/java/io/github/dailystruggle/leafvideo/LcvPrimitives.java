@@ -626,6 +626,7 @@ public final class LcvPrimitives {
         public final byte[] tripletScratchBuf = new byte[MAX_CUBE_SAMPLES + 64];
         public final byte[] roaringSubScratchA = new byte[MAX_CUBE_SAMPLES + 32];
         public final byte[] roaringSubScratchB = new byte[MAX_CUBE_SAMPLES + 32];
+        public final byte[] tileOutScratch = new byte[MAX_CUBE_SAMPLES * 4 + 256];
         public final int[] posCursor = new int[1];
     }
 }

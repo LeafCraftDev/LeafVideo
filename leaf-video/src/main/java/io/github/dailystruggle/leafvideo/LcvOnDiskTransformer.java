@@ -49,12 +49,36 @@ public final class LcvOnDiskTransformer {
             ByteBuffer srcBuf = ByteBuffer.wrap(superblockBytes).order(ByteOrder.BIG_ENDIAN);
             int srcDirBase = header.directoryOffset();
             int srcSynBase = header.secDedOffset();
-            int srcMsbPoolBase = header.msbPoolOffset();
-            int srcLsbPoolBase = header.lsbPoolOffset();
+            int srcMsbPoolFileOff = header.msbPoolOffset();
+            int srcLsbPoolFileOff = header.lsbPoolOffset();
 
+            boolean zstdPool = (header.flags8() & LcvStreamContainer.FLAG_ZSTD_POOL) != 0;
             boolean lsbStripped = (header.flags8() & LcvStreamContainer.FLAG_LSB_STRIPPED) != 0
                 || header.lsbPoolCompressedLen32() == 0;
             int srcLsbTableBytes = srcTotalTiles * 4;
+
+            byte[] srcMsbPool = superblockBytes;
+            int srcMsbPoolBase = srcMsbPoolFileOff;
+            byte[] srcLsbPool = superblockBytes;
+            int srcLsbPoolBase = srcLsbPoolFileOff;
+            if (zstdPool) {
+                srcMsbPool = LcvStreamContainer.decompressZstdFrameWithSizeHeader(
+                    superblockBytes, srcMsbPoolFileOff, header.msbPoolCompressedLen32()
+                );
+                srcMsbPoolBase = 0;
+                if (!lsbStripped && header.lsbPoolCompressedLen32() > 0) {
+                    srcLsbPool = LcvStreamContainer.decompressZstdFrameWithSizeHeader(
+                        superblockBytes, srcLsbPoolFileOff, header.lsbPoolCompressedLen32()
+                    );
+                    srcLsbPoolBase = 0;
+                } else {
+                    srcLsbPool = new byte[0];
+                    srcLsbPoolBase = 0;
+                }
+            }
+            ByteBuffer srcLsbBuf = (!lsbStripped && srcLsbPool.length >= srcLsbPoolBase + srcLsbTableBytes)
+                ? ByteBuffer.wrap(srcLsbPool).order(ByteOrder.BIG_ENDIAN)
+                : null;
 
             ByteArrayOutputStream dstMsbPoolOut = new ByteArrayOutputStream(dstTotalTiles * 128);
             ByteArrayOutputStream dstLsbPayloadOut = new ByteArrayOutputStream(dstTotalTiles * 64);
@@ -87,15 +111,17 @@ public final class LcvOnDiskTransformer {
 
                     int srcRelMsbOff = LcvStreamContainer.extractRelByteOffset30(ptr64);
                     int msbLen = LcvStreamContainer.extractMsbSliceLen16(ptr64);
-                    int lsbLen = lsbStripped ? 0 : LcvStreamContainer.extractLsbSliceLen16(ptr64);
+                    int lsbLen = (lsbStripped || srcLsbBuf == null)
+                        ? 0
+                        : LcvStreamContainer.extractLsbSliceLen16(ptr64);
 
                     int newRelMsbOff = dstMsbPoolOut.size();
-                    dstMsbPoolOut.write(superblockBytes, srcMsbPoolBase + srcRelMsbOff, msbLen);
+                    dstMsbPoolOut.write(srcMsbPool, srcMsbPoolBase + srcRelMsbOff, msbLen);
 
-                    if (lsbLen > 0) {
-                        int srcRelLsbOff = srcBuf.getInt(srcLsbPoolBase + srcTileIdx * 4);
+                    if (lsbLen > 0 && srcLsbBuf != null) {
+                        int srcRelLsbOff = srcLsbBuf.getInt(srcLsbPoolBase + srcTileIdx * 4);
                         dstLsbPayloadOut.write(
-                            superblockBytes, srcLsbPoolBase + srcLsbTableBytes + srcRelLsbOff, lsbLen
+                            srcLsbPool, srcLsbPoolBase + srcLsbTableBytes + srcRelLsbOff, lsbLen
                         );
                     }
 
@@ -114,9 +140,18 @@ public final class LcvOnDiskTransformer {
             byte[] dstLsbBytes = LcvStreamContainer.buildIndexedLsbPool(
                 dstTotalTiles, dstLsbTileRelOffsets, dstLsbPayloadOut.toByteArray()
             );
+            int outFlags8 = header.flags8();
+            if (zstdPool && LcvStreamContainer.isZstdAvailable()) {
+                dstMsbBytes = LcvStreamContainer.compressZstdFrameWithSizeHeader(dstMsbBytes);
+                dstLsbBytes = dstLsbBytes.length > 0
+                    ? LcvStreamContainer.compressZstdFrameWithSizeHeader(dstLsbBytes)
+                    : dstLsbBytes;
+            } else {
+                outFlags8 &= ~LcvStreamContainer.FLAG_ZSTD_POOL;
+            }
 
             return LcvStreamContainer.assembleSuperblockBytes(
-                newWidth, newHeight, header.depthK8(), header.flags8(),
+                newWidth, newHeight, header.depthK8(), outFlags8,
                 cropTilesX, cropTilesY, newRoiX, newRoiY, header.tuningProfile16(),
                 header.frameIndex64(), header.prevSbOffset64(),
                 header.fpsNum32(), header.fpsDen32(),
@@ -195,11 +230,35 @@ public final class LcvOnDiskTransformer {
             ByteBuffer srcBuf = ByteBuffer.wrap(superblockBytes).order(ByteOrder.BIG_ENDIAN);
             int dirBase = header.directoryOffset();
             int synBase = header.secDedOffset();
-            int srcMsbPoolBase = header.msbPoolOffset();
-            int srcLsbPoolBase = header.lsbPoolOffset();
+            int srcMsbPoolFileOff = header.msbPoolOffset();
+            int srcLsbPoolFileOff = header.lsbPoolOffset();
+            boolean zstdPool = (header.flags8() & LcvStreamContainer.FLAG_ZSTD_POOL) != 0;
             boolean lsbStripped = (header.flags8() & LcvStreamContainer.FLAG_LSB_STRIPPED) != 0
                 || header.lsbPoolCompressedLen32() == 0;
             int srcLsbTableBytes = nTiles * 4;
+
+            byte[] srcMsbPool = superblockBytes;
+            int srcMsbPoolBase = srcMsbPoolFileOff;
+            byte[] srcLsbPool = superblockBytes;
+            int srcLsbPoolBase = srcLsbPoolFileOff;
+            if (zstdPool) {
+                srcMsbPool = LcvStreamContainer.decompressZstdFrameWithSizeHeader(
+                    superblockBytes, srcMsbPoolFileOff, header.msbPoolCompressedLen32()
+                );
+                srcMsbPoolBase = 0;
+                if (!lsbStripped && header.lsbPoolCompressedLen32() > 0) {
+                    srcLsbPool = LcvStreamContainer.decompressZstdFrameWithSizeHeader(
+                        superblockBytes, srcLsbPoolFileOff, header.lsbPoolCompressedLen32()
+                    );
+                    srcLsbPoolBase = 0;
+                } else {
+                    srcLsbPool = new byte[0];
+                    srcLsbPoolBase = 0;
+                }
+            }
+            ByteBuffer srcLsbBuf = (!lsbStripped && srcLsbPool.length >= srcLsbPoolBase + srcLsbTableBytes)
+                ? ByteBuffer.wrap(srcLsbPool).order(ByteOrder.BIG_ENDIAN)
+                : null;
 
             long[] dstPointers = new long[nTiles];
             byte[] dstSyndromes = new byte[nTiles];
@@ -231,11 +290,13 @@ public final class LcvOnDiskTransformer {
 
                     int srcRelMsbOff = LcvStreamContainer.extractRelByteOffset30(ptr64);
                     int srcMsbLen = LcvStreamContainer.extractMsbSliceLen16(ptr64);
-                    int srcLsbLen = lsbStripped ? 0 : LcvStreamContainer.extractLsbSliceLen16(ptr64);
+                    int srcLsbLen = (lsbStripped || srcLsbBuf == null)
+                        ? 0
+                        : LcvStreamContainer.extractLsbSliceLen16(ptr64);
                     int srcAbsMsbOff = srcMsbPoolBase + srcRelMsbOff;
                     int srcAbsLsbOff = 0;
-                    if (srcLsbLen > 0) {
-                        int srcRelLsbOff = srcBuf.getInt(srcLsbPoolBase + tileIdx * 4);
+                    if (srcLsbLen > 0 && srcLsbBuf != null) {
+                        int srcRelLsbOff = srcLsbBuf.getInt(srcLsbPoolBase + tileIdx * 4);
                         srcAbsLsbOff = srcLsbPoolBase + srcLsbTableBytes + srcRelLsbOff;
                     }
 
@@ -243,7 +304,7 @@ public final class LcvOnDiskTransformer {
                     double dy = ty - roiTileY;
                     double radialDist = Math.sqrt(dx * dx + dy * dy);
 
-                    int cubeHeader8 = superblockBytes[srcAbsMsbOff] & 0xFF;
+                    int cubeHeader8 = srcMsbPool[srcAbsMsbOff] & 0xFF;
                     int cubeMode = (cubeHeader8 >>> 4) & 0x03;
 
                     // If lossless at this radial distance or non-Gray mode, copy slices directly
@@ -251,9 +312,9 @@ public final class LcvOnDiskTransformer {
                         || (cubeMode != LcvCubeCodec.CUBE_MODE_GRAY_PLANES_RAW
                             && cubeMode != LcvCubeCodec.CUBE_MODE_GRAY_PLANES_HILBERT_DELTA)) {
                         int newRelMsbOff = dstMsbPoolOut.size();
-                        dstMsbPoolOut.write(superblockBytes, srcAbsMsbOff, srcMsbLen);
+                        dstMsbPoolOut.write(srcMsbPool, srcAbsMsbOff, srcMsbLen);
                         if (srcLsbLen > 0) {
-                            dstLsbPayloadOut.write(superblockBytes, srcAbsLsbOff, srcLsbLen);
+                            dstLsbPayloadOut.write(srcLsbPool, srcAbsLsbOff, srcLsbLen);
                         }
                         long newPtr = LcvStreamContainer.makeActiveTilePointer(newRelMsbOff, srcMsbLen, srcLsbLen);
                         dstPointers[tileIdx] = newPtr;
@@ -264,8 +325,8 @@ public final class LcvOnDiskTransformer {
                     // Coalesce bitplane tokens directly in the compressed domain (zero pixel decode)
                     int lsbSplitBits = header.tuningProfile().lsbSplitBits();
                     int[] newLengths = coalesceTileGrayBitplanesCompressed(
-                        superblockBytes, srcAbsMsbOff, srcMsbLen,
-                        superblockBytes, srcAbsLsbOff, srcLsbLen,
+                        srcMsbPool, srcAbsMsbOff, srcMsbLen,
+                        srcLsbPool, srcAbsLsbOff, srcLsbLen,
                         nSamples, radialDist, policy, lsbSplitBits, arena,
                         tileMsbScratch, tileLsbScratch
                     );
@@ -288,6 +349,15 @@ public final class LcvOnDiskTransformer {
             byte[] dstLsbBytes = LcvStreamContainer.buildIndexedLsbPool(
                 nTiles, dstLsbTileRelOffsets, dstLsbPayloadOut.toByteArray()
             );
+            int outFlags8 = header.flags8();
+            if (zstdPool && LcvStreamContainer.isZstdAvailable()) {
+                dstMsbBytes = LcvStreamContainer.compressZstdFrameWithSizeHeader(dstMsbBytes);
+                dstLsbBytes = dstLsbBytes.length > 0
+                    ? LcvStreamContainer.compressZstdFrameWithSizeHeader(dstLsbBytes)
+                    : dstLsbBytes;
+            } else {
+                outFlags8 &= ~LcvStreamContainer.FLAG_ZSTD_POOL;
+            }
 
             LcvCubeCodec.TuningProfile oldProfile = header.tuningProfile();
             int updatedTuning16 = new LcvCubeCodec.TuningProfile(
@@ -295,7 +365,7 @@ public final class LcvOnDiskTransformer {
             ).toPackedU16();
 
             return LcvStreamContainer.assembleSuperblockBytes(
-                header.width16(), header.height16(), depthK, header.flags8(),
+                header.width16(), header.height16(), depthK, outFlags8,
                 tilesX, tilesY, roiTileX, roiTileY, updatedTuning16,
                 header.frameIndex64(), header.prevSbOffset64(),
                 header.fpsNum32(), header.fpsDen32(),
@@ -733,13 +803,37 @@ public final class LcvOnDiskTransformer {
             int nSamples = LcvPrimitives.TILE_PIXELS * depthK;
 
             boolean wasPartial = (header.flags8() & LcvStreamContainer.FLAG_INLINE_RECODE_PARTIAL) != 0;
+            boolean zstdPool = (header.flags8() & LcvStreamContainer.FLAG_ZSTD_POOL) != 0;
             ByteBuffer srcBuf = ByteBuffer.wrap(superblockBytes).order(ByteOrder.BIG_ENDIAN);
             int dirBase = header.directoryOffset();
             int synBase = header.secDedOffset();
-            int srcMsbPoolBase = header.msbPoolOffset();
-            int srcLsbPoolBase = header.lsbPoolOffset();
+            int srcMsbPoolFileOff = header.msbPoolOffset();
+            int srcLsbPoolFileOff = header.lsbPoolOffset();
             boolean srcLsbStripped = (header.flags8() & LcvStreamContainer.FLAG_LSB_STRIPPED) != 0
                 || header.lsbPoolCompressedLen32() == 0;
+
+            byte[] srcMsbPool = superblockBytes;
+            int srcMsbPoolBase = srcMsbPoolFileOff;
+            byte[] srcLsbPool = superblockBytes;
+            int srcLsbPoolBase = srcLsbPoolFileOff;
+            if (zstdPool) {
+                srcMsbPool = LcvStreamContainer.decompressZstdFrameWithSizeHeader(
+                    superblockBytes, srcMsbPoolFileOff, header.msbPoolCompressedLen32()
+                );
+                srcMsbPoolBase = 0;
+                if (!srcLsbStripped && header.lsbPoolCompressedLen32() > 0) {
+                    srcLsbPool = LcvStreamContainer.decompressZstdFrameWithSizeHeader(
+                        superblockBytes, srcLsbPoolFileOff, header.lsbPoolCompressedLen32()
+                    );
+                    srcLsbPoolBase = 0;
+                } else {
+                    srcLsbPool = new byte[0];
+                    srcLsbPoolBase = 0;
+                }
+            }
+            ByteBuffer srcLsbBuf = (!srcLsbStripped && srcLsbPool.length > srcLsbPoolBase)
+                ? ByteBuffer.wrap(srcLsbPool).order(ByteOrder.BIG_ENDIAN)
+                : null;
 
             int srcCheckpointBytes = wasPartial ? 4 : 0;
             int srcLsbTableBase = srcLsbPoolBase + srcCheckpointBytes;
@@ -747,8 +841,8 @@ public final class LcvOnDiskTransformer {
 
             LcvCubeCodec.TuningProfile priorProfile = (explicitPriorProfile != null)
                 ? explicitPriorProfile
-                : (wasPartial && !srcLsbStripped
-                    ? LcvCubeCodec.TuningProfile.fromPackedU16(srcBuf.getShort(srcLsbPoolBase + 2) & 0xFFFF)
+                : (wasPartial && !srcLsbStripped && srcLsbBuf != null
+                    ? LcvCubeCodec.TuningProfile.fromPackedU16(srcLsbBuf.getShort(srcLsbPoolBase + 2) & 0xFFFF)
                     : header.tuningProfile());
 
             int safeStart = Math.max(0, Math.min(nTiles, startCursor));
@@ -795,10 +889,12 @@ public final class LcvOnDiskTransformer {
 
                 int srcMsbOff = srcMsbPoolBase + LcvStreamContainer.extractRelByteOffset30(ptr64);
                 int srcMsbLen = LcvStreamContainer.extractMsbSliceLen16(ptr64);
-                int srcLsbLen = srcLsbStripped ? 0 : LcvStreamContainer.extractLsbSliceLen16(ptr64);
+                int srcLsbLen = (srcLsbStripped || srcLsbBuf == null)
+                    ? 0
+                    : LcvStreamContainer.extractLsbSliceLen16(ptr64);
                 int srcLsbOff = 0;
-                if (srcLsbLen > 0) {
-                    int relLsb = srcBuf.getInt(srcLsbTableBase + tileIdx * 4);
+                if (srcLsbLen > 0 && srcLsbBuf != null) {
+                    int relLsb = srcLsbBuf.getInt(srcLsbTableBase + tileIdx * 4);
                     srcLsbOff = srcLsbDataBase + relLsb;
                 }
 
@@ -806,10 +902,10 @@ public final class LcvOnDiskTransformer {
                 // -> Copy verbatim in O(1) without decoding or re-encoding!
                 if (tileIdx < safeStart || tileIdx >= endCursor) {
                     int newRelMsbOff = dstMsbPoolOut.size();
-                    dstMsbPoolOut.write(superblockBytes, srcMsbOff, srcMsbLen);
+                    dstMsbPoolOut.write(srcMsbPool, srcMsbOff, srcMsbLen);
                     dstLsbTileRelOffsets[tileIdx] = dstLsbPayloadOut.size();
                     if (srcLsbLen > 0) {
-                        dstLsbPayloadOut.write(superblockBytes, srcLsbOff, srcLsbLen);
+                        dstLsbPayloadOut.write(srcLsbPool, srcLsbOff, srcLsbLen);
                     }
                     long newPtr = LcvStreamContainer.makeActiveTilePointer(newRelMsbOff, srcMsbLen, srcLsbLen);
                     dstPointers[tileIdx] = newPtr;
@@ -827,8 +923,8 @@ public final class LcvOnDiskTransformer {
                     double radialDist = Math.sqrt(dx * dx + dy * dy);
                     int effectiveSrcLsbLen = stripTargetLsb ? 0 : srcLsbLen;
                     int[] newLengths = coalesceTileGrayBitplanesCompressed(
-                        superblockBytes, srcMsbOff, srcMsbLen,
-                        superblockBytes, srcLsbOff, effectiveSrcLsbLen,
+                        srcMsbPool, srcMsbOff, srcMsbLen,
+                        srcLsbPool, srcLsbOff, effectiveSrcLsbLen,
                         nSamples, radialDist, targetProfile.rlePolicy(), dstSplitBits,
                         arena, tileMsbScratch, tileLsbScratch
                     );
@@ -837,8 +933,8 @@ public final class LcvOnDiskTransformer {
                 } else {
                     // Split boundary changed (e.g., s=2 -> s=3) -> inline single-packet transcode in ScratchArena
                     LcvCubeCodec.decodeSplitCubeRgba(
-                        superblockBytes, srcMsbOff, srcMsbLen,
-                        superblockBytes, srcLsbOff, srcLsbLen,
+                        srcMsbPool, srcMsbOff, srcMsbLen,
+                        srcLsbPool, srcLsbOff, srcLsbLen,
                         false, depthK, srcSplitBits, arena, arena.cubeRgbaTyx
                     );
                     LcvCubeCodec.CubeEncodeResult recoded = LcvCubeCodec.encodeExtractedCubeTyx(

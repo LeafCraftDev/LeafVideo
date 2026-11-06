@@ -71,7 +71,7 @@ moderation decisions when appropriate.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the project maintainers by opening a
-[private security advisory](https://github.com/LeafCraftDev/Video/security/advisories/new)
+[private security advisory](https://github.com/LeafCraftDev/LeafVideo/security/advisories/new)
 with `[CoC]` in the title, or by direct message via the contact method
 listed on the maintainer's GitHub profile.
 

@@ -1,8 +1,8 @@
-# leaf-video-ADR-002: Three-Tier Open Standard (`MIT`) and Commercial Workflow Product Architecture (`LeafCraftDev/Video`)
+# leaf-video-ADR-002: Three-Tier Open Standard (`MIT`) and Commercial Workflow Product Architecture (`LeafCraftDev/LeafVideo`)
 
 - **Status:** Accepted
 - **Date:** 2026-11-06
-- **Scope:** `:leaf-video` (`leaf-video/`), `resource/LeafVideo/`, and public projection target `LeafCraftDev/Video` (`--target video`)
+- **Scope:** `:leaf-video` (`leaf-video/`), `resource/LeafVideo/`, and public projection target `LeafCraftDev/LeafVideo` (`--target video`)
 - **Extends:** [`leaf-video-ADR-001`](leaf-video-ADR-001-spatiotemporal-gray-hilbert-video-codec-and-mkv-transform.md), [`ADR-108`](../../../docs/adr/ADR-108-all-mit-licensing-pro-as-support.md), [`ADR-126`](../../../docs/adr/ADR-126-multi-product-monorepo-release-architecture.md)
 - **Normative Binary Specification:** [`LCV-ICD-1.0` (`../ICD.md`)](../ICD.md)
 
@@ -32,13 +32,13 @@ Conversely, end users and enterprise teams gladly pay for **workflow superpowers
 
 ## Decision
 
-Establish a **Three-Tier Open Standard & Commercial Product Split** across `leaf-video/` and `resource/LeafVideo/`, following the repository licensing architecture in [`docs/dev/LICENSING.md`](../../../docs/dev/LICENSING.md) (`ADR-108`, `ADR-126`, and the `anvil-api` / `resource/LeafAnvil` open-spec + commercial carrier pattern), and project the public repository to **[`https://github.com/LeafCraftDev/Video`](https://github.com/LeafCraftDev/Video)** (`--target video`).
+Establish a **Three-Tier Open Standard & Commercial Product Split** across `leaf-video/` and `resource/LeafVideo/`, following the repository licensing architecture in [`docs/dev/LICENSING.md`](../../../docs/dev/LICENSING.md) (`ADR-108`, `ADR-126`, and the `anvil-api` / `resource/LeafAnvil` open-spec + commercial carrier pattern), and project the public repository to **[`https://github.com/LeafCraftDev/LeafVideo`](https://github.com/LeafCraftDev/LeafVideo)** (`--target video`).
 
 ### 1. Three-Tier Licensing & Component Matrix
 
 | Tier | Component & Path | License / Distribution Model | Purpose |
 | :--- | :--- | :--- | :--- |
-| **Tier 1: Open Standard & Core Reference (`leaf-video/`)** | - `LCV-ICD-1.0` ([`leaf-video/docs/ICD.md`](../ICD.md))<br>- [`leaf-video-ADR-001`](leaf-video-ADR-001-spatiotemporal-gray-hilbert-video-codec-and-mkv-transform.md) & `leaf-video-ADR-002`<br>- `:leaf-video` Java 17+ reference codec (`LcvPrimitives`, `LcvCubeCodec`, `LcvStreamContainer`, `LcvMkvPacketizer`, `LcvOnDiskTransformer`, `LcvCorruptTileException`) | **Free & Open Source (`MIT`)** ([`leaf-video/LICENSE`](../../LICENSE)) | Guarantees zero vendor lock-in, zero patent/royalty friction, universal playback, academic/developer auditability, and community contributions in [`LeafCraftDev/Video`](https://github.com/LeafCraftDev/Video). |
+| **Tier 1: Open Standard & Core Reference (`leaf-video/`)** | - `LCV-ICD-1.0` ([`leaf-video/docs/ICD.md`](../ICD.md))<br>- [`leaf-video-ADR-001`](leaf-video-ADR-001-spatiotemporal-gray-hilbert-video-codec-and-mkv-transform.md) & `leaf-video-ADR-002`<br>- `:leaf-video` Java 17+ reference codec (`LcvPrimitives`, `LcvCubeCodec`, `LcvStreamContainer`, `LcvMkvPacketizer`, `LcvOnDiskTransformer`, `LcvCorruptTileException`) | **Free & Open Source (`MIT`)** ([`leaf-video/LICENSE`](../../LICENSE)) | Guarantees zero vendor lock-in, zero patent/royalty friction, universal playback, academic/developer auditability, and community contributions in [`LeafCraftDev/LeafVideo`](https://github.com/LeafCraftDev/LeafVideo). |
 | **Tier 2: Creator & Editor Binaries (`resource/LeafVideo/` — OBS / NLE GUI Addons)** | - **OBS Studio "Single-Encode Multi-Crop & Crash Guard" Suite** (1-click 9:16 visual crop selector, auto-proxy stripper, crash-recovery doctor, background `.mp4` exporter)<br>- **NLE Instant-Scrub & Crash-Resumable Render Plugin** (DaVinci Resolve / Premiere Pro / After Effects / Blender native `.lcv` media reader & resumable exporter) | **Dual Track (`ADR-108` Style + Commercial Studio Binary):**<br>- CLI / Core reference library (`:leaf-video`) remains free `MIT`<br>- Pre-built GUI Studio Installer + Auto-Updater + Priority Support sold as Pro (`$15–$99`) | Monetizes creator convenience, native GUI integration, workflow automation, and priority support without restricting the open `.lcv` format. |
 | **Tier 3: High-Performance Native / Hardware / B2B SDK (`resource/LeafVideo/`)** | - Zero-copy `AVX2` / `NEON` / GPU Compute (`Vulkan` / `CUDA`) C++20 encoder<br>- Embedded `WIRELESS_FOVEATED_LOW_LATENCY` & `HARSH_RF_UEP_ZERO_WAIT` wireless transmitter/receiver link daemon with FEC/UEP socket queue shedding | **LeafCraft Commercial Software License (`LicenseRef-LeafCraft-Commercial`)** ([`resource/LeafVideo/LICENSE`](../../../resource/LeafVideo/LICENSE)) | Monetizes commercial hardware, FPV drone/robotics OEM integration, and enterprise broadcast deployments with SLA guarantees. |
 
@@ -54,15 +54,15 @@ Establish a **Three-Tier Open Standard & Commercial Product Split** across `leaf
 
 ---
 
-### 3. Repository Layout & Public Projection (`https://github.com/LeafCraftDev/Video`)
+### 3. Repository Layout & Public Projection (`https://github.com/LeafCraftDev/LeafVideo`)
 
-1. **`leaf-video/` (`MIT`):**
-   - Houses the canonical `LCV-ICD-1.0` specification (`leaf-video/docs/ICD.md`), `leaf-video-ADR-001`, `leaf-video-ADR-002`, `leaf-video/LICENSE`, `leaf-video/CHANGELOG.md`, and the complete `:leaf-video` Java 17+ reference codec and JUnit 5 proof suite.
-2. **`resource/LeafVideo/` (`LicenseRef-LeafCraft-Commercial` with Open `.lcv` MIT Carve-Out):**
-   - Mirrors `resource/LeafAnvil/`: public documentation (`resource/LeafVideo/README.md`, `resource/LeafVideo/CHANGELOG.md`, `resource/LeafVideo/LICENSE`, `resource/LeafVideo/docs/ICD.md`, `resource/LeafVideo/docs/adr/README.md`, `resource/LeafVideo/docs/publishing/FRONT_PAGE.md`) is projected to `LeafCraftDev/Video` alongside `leaf-video/`, while any proprietary Tier 2 GUI installer or Tier 3 native C++20 SIMD/GPU/UEP source paths under `resource/LeafVideo/` remain private to `LeafCraftDev/MC` (`scripts/pre_push_guard.py`).
-3. **Deterministic Sync (`scripts/release/sync_public_oss_pr.py --target video`):**
-   - Exports a self-contained Gradle Java 17+ project (`rootProject.name = 'LeafVideo'`, `include 'leaf-video'`) to `LeafCraftDev/Video` (`video` remote, branch `main`, version branch `0.1.0`) with `resource/LeafVideo/README.md` promoted to root `README.md` and `leaf-video/LICENSE` (`MIT`) at root `LICENSE`.
-
+1. **`leaf-video/` (`MIT` — Public Codec & Normative Context):**
+   - Houses the canonical `LCV-ICD-1.0` specification (`leaf-video/docs/ICD.md`), `leaf-video-ADR-001`, `leaf-video-ADR-002`, `leaf-video/LICENSE`, `leaf-video/CHANGELOG.md`, and the complete `:leaf-video` Java 17+ reference codec library (`LcvPrimitives`, `LcvCubeCodec`, `LcvStreamContainer`, `LcvMkvPacketizer`, `LcvOnDiskTransformer`, `LcvCorruptTileException`) and JUnit 5 codec/recovery/benchmark proof suite.
+2. **`resource/LeafVideo/` (`LicenseRef-LeafCraft-Commercial` — Public Context Docs + Private Program/Integrations):**
+   - Public context documentation (`resource/LeafVideo/README.md`, `resource/LeafVideo/CHANGELOG.md`, `resource/LeafVideo/LICENSE`, `resource/LeafVideo/docs/ICD.md`, `resource/LeafVideo/docs/adr/README.md`, `resource/LeafVideo/docs/publishing/FRONT_PAGE.md`) is projected to `LeafCraftDev/LeafVideo` alongside `leaf-video/`.
+   - The runnable program (`LcvCli.java`), OBS Studio / Blender VSE studio integrations (`resource/LeafVideo/integrations/`), external editor proof suite (`LcvExternalPlayerAndEditorProofTest.java`), and Tier 2/3 commercial builds (`resource/LeafVideo/build.gradle`) remain strictly in private repositories (`LeafCraftDev/MC`, enforced by `scripts/pre_push_guard.py`).
+3. **Deterministic Standalone Sync (`scripts/release/sync_public_oss_pr.py --target video`):**
+   - Exports a standalone Gradle Java 17+ project (`rootProject.name = 'LeafVideo'`, `include 'leaf-video'`) containing only the `:leaf-video` codec and `LeafVideo` context docs (without unrelated Minecraft monorepo `docs/` or `api/` modules) to `LeafCraftDev/LeafVideo` (`video` remote, branch `main`, version branch `0.1.0`) with `resource/LeafVideo/README.md` promoted to root `README.md` and `leaf-video/LICENSE` (`MIT`) at root `LICENSE`.
 ---
 
 ## Consequences

@@ -62,20 +62,24 @@ Following [`docs/dev/LICENSING.md`](docs/dev/LICENSING.md) (`ADR-108` & `ADR-126
 
 ---
 
-## 5. Build & Verification (`:leaf-video` MIT Reference Suite)
+## 5. Build, Verification & Application Integrations (`:leaf-video` MIT Reference Suite)
 
 ```bash
-# Run the full JUnit 5 lossless, foveated RLE, on-disk transform, and crash-recovery torture suite
+# Run the full JUnit 5 lossless, foveated RLE, on-disk transform, crash-recovery,
+## 5. Build & Verification (`:leaf-video` MIT Reference Codec Suite)
+
+```bash
+# Run the full JUnit 5 lossless, foveated RLE, on-disk transform, and crash-recovery proof suite
 ./gradlew :leaf-video:test --console=plain -q
 
-# Run the standalone benchmark CLI across all 4 workloads and operating profiles
-./gradlew :leaf-video:test --tests "io.github.dailystruggle.leafvideo.LcvBenchmarkAndProofSuiteTest" --console=plain -q
+# Run the comparative multi-codec compression & throughput benchmark suite
+./gradlew :leaf-video:test --tests "*LcvBenchmarkAndProofSuiteTest*" --console=plain -q
+
+# Run the .mkv (V_LCV1) truncation & SEC-DED bit-rot recovery torture suite
+./gradlew :leaf-video:test --tests "*LcvRecoveryTortureTest*" --console=plain -q
 ```
 
----
-
-## 6. Documentation (`leaf-video/` & `resource/LeafVideo/`)
-
+*(The standalone CLI application `LcvCli` and OBS Studio / Blender studio integrations live in private repositories under `:resource:LeafVideo`; this repository publishes the MIT reference codec `:leaf-video` and `LCV-ICD-1.0` specification context.)*
 - [**`.lcv` / `V_LCV1` Binary Interface Control Document (`leaf-video/docs/ICD.md`, MIT)**](leaf-video/docs/ICD.md) *(single canonical specification, routed from [`docs/ICD.md`](resource/LeafVideo/docs/ICD.md) and packaged in `leaf-video.jar` under `META-INF/leaf-video/docs/ICD.md`)*
 - [**`:leaf-video` Reference Codec Guide (`leaf-video/README.md`, MIT)**](leaf-video/README.md)
 - [**`leaf-video-ADR-001`: Spatiotemporal Gray-Hilbert Video Codec & `.mkv` Transform**](leaf-video/docs/adr/leaf-video-ADR-001-spatiotemporal-gray-hilbert-video-codec-and-mkv-transform.md)

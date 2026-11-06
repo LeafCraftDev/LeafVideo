@@ -319,6 +319,191 @@ public final class LcvStreamContainer {
         );
     }
 
+    /**
+     * Tile-parallel workgroup encoder that evaluates all {@code tilesX * tilesY} independent
+     * {@code 16 x 16 x K} spatiotemporal cubes concurrently across worker threads (mirroring
+     * GPU compute workgroup dispatch where 1 workgroup encodes 1 tile), followed by deterministic
+     * prefix-sum pointer assembly so the resulting {@code Superblock} is 100% byte-for-byte
+     * identical to {@link #encodeSuperblock}.
+     */
+    public static byte[] encodeSuperblockParallel(
+        int[] rgbaFrames, int width, int height, int depthK,
+        long frameIndex64, long prevSbOffset64,
+        int roiTileX, int roiTileY,
+        LcvCubeCodec.TuningProfile tuningProfile,
+        boolean useZstdPool,
+        StreamEncoderState encoderState
+    ) {
+        LcvCubeCodec.validateDepthK(depthK);
+        if (width <= 0 || height <= 0 || width > 65535 || height > 65535) {
+            throw new IllegalArgumentException("Invalid frame dimensions: " + width + "x" + height);
+        }
+        final LcvCubeCodec.TuningProfile activeProfile =
+            (tuningProfile != null) ? tuningProfile : LcvCubeCodec.TuningProfile.DEFAULT_LOSSLESS;
+        final LcvCubeCodec.DistanceRlePolicy rlePolicy = activeProfile.rlePolicy();
+        final int lsbSplitBits = activeProfile.lsbSplitBits();
+        final int maxCleanAckRefresh = activeProfile.cleanAckRefreshWindow();
+
+        final int tilesX = (width + LcvPrimitives.TILE_DIM - 1) / LcvPrimitives.TILE_DIM;
+        final int tilesY = (height + LcvPrimitives.TILE_DIM - 1) / LcvPrimitives.TILE_DIM;
+        final int nTiles = tilesX * tilesY;
+        final int nSamples = LcvPrimitives.TILE_PIXELS * depthK;
+
+        // Phase 1: Tile-row workgroup parallel encoding (1 independent workgroup per tile row ty = 0..tilesY-1,
+        // eliminating L1/L2 cache-line false sharing and per-tile heap allocations).
+        final TileRowEncodeResult[] rowResults = new TileRowEncodeResult[tilesY];
+        java.util.stream.IntStream.range(0, tilesY).parallel().forEach(ty -> {
+            LcvPrimitives.ScratchArena arena = LcvPrimitives.threadArena();
+            byte[] tileScratch = arena.tileOutScratch;
+            boolean[] rowUniform = new boolean[tilesX];
+            int[] rowFirstRgba = new int[tilesX];
+            boolean[] rowCleanAck = new boolean[tilesX];
+            long[] rowDigests = new long[tilesX];
+            int[] rowMsbRelOff = new int[tilesX];
+            int[] rowMsbLen = new int[tilesX];
+            int[] rowLsbRelOff = new int[tilesX];
+            int[] rowLsbLen = new int[tilesX];
+            ByteArrayOutputStream rowMsbOut = new ByteArrayOutputStream(tilesX * 128);
+            ByteArrayOutputStream rowLsbOut = new ByteArrayOutputStream(tilesX * 64);
+
+            int rowBaseTileIdx = ty * tilesX;
+            for (int tx = 0; tx < tilesX; tx++) {
+                int tileIdx = rowBaseTileIdx + tx;
+                rowLsbRelOff[tx] = rowLsbOut.size();
+                LcvCubeCodec.extractTileToCubeTyx(rgbaFrames, tx, ty, width, height, depthK, arena.cubeRgbaTyx);
+
+                int firstRgba = arena.cubeRgbaTyx[0];
+                boolean uniform = true;
+                for (int i = 1; i < nSamples; i++) {
+                    if (arena.cubeRgbaTyx[i] != firstRgba) {
+                        uniform = false;
+                        break;
+                    }
+                }
+                if (uniform) {
+                    rowUniform[tx] = true;
+                    rowFirstRgba[tx] = firstRgba;
+                    if (encoderState != null) {
+                        rowDigests[tx] = LcvPrimitives.computeCubeDigest64(arena.cubeRgbaTyx, nSamples);
+                    }
+                    continue;
+                }
+
+                long digest64 = LcvPrimitives.computeCubeDigest64(arena.cubeRgbaTyx, nSamples);
+                rowDigests[tx] = digest64;
+
+                if (encoderState != null
+                    && maxCleanAckRefresh > 0
+                    && encoderState.cleanAckRunLength[tileIdx] < maxCleanAckRefresh
+                    && encoderState.lastTileDigest64[tileIdx] == digest64) {
+                    rowCleanAck[tx] = true;
+                    continue;
+                }
+
+                LcvCubeCodec.CubeEncodeResult enc = LcvCubeCodec.encodeExtractedCubeTyx(
+                    arena.cubeRgbaTyx, depthK, tx, ty, roiTileX, roiTileY,
+                    rlePolicy, lsbSplitBits, arena, tileScratch, 0
+                );
+                int msbLen = enc.msbSliceBytes();
+                int lsbLen = enc.lsbSliceBytes();
+                rowMsbRelOff[tx] = rowMsbOut.size();
+                rowMsbLen[tx] = msbLen;
+                rowLsbLen[tx] = lsbLen;
+                rowMsbOut.write(tileScratch, 0, msbLen);
+                if (lsbLen > 0) {
+                    rowLsbOut.write(tileScratch, msbLen, lsbLen);
+                }
+            }
+            rowResults[ty] = new TileRowEncodeResult(
+                rowUniform, rowFirstRgba, rowCleanAck, rowDigests,
+                rowMsbRelOff, rowMsbLen, rowLsbRelOff, rowLsbLen,
+                rowMsbOut.toByteArray(), rowLsbOut.toByteArray()
+            );
+        });
+
+        // Phase 2: Deterministic linear prefix-sum pointer assembly (100% bit-exact parity with encodeSuperblock)
+        long[] pointerDir = new long[nTiles];
+        byte[] syndromes = new byte[nTiles];
+        ByteArrayOutputStream msbPoolOut = new ByteArrayOutputStream(nTiles * 128);
+        ByteArrayOutputStream lsbPayloadOut = new ByteArrayOutputStream(nTiles * 64);
+        int[] lsbTileRelOffsets = new int[nTiles];
+
+        for (int ty = 0; ty < tilesY; ty++) {
+            TileRowEncodeResult row = rowResults[ty];
+            int rowMsbBase = msbPoolOut.size();
+            int rowLsbBase = lsbPayloadOut.size();
+            if (row.msbBytes.length > 0) {
+                msbPoolOut.write(row.msbBytes, 0, row.msbBytes.length);
+            }
+            if (row.lsbBytes.length > 0) {
+                lsbPayloadOut.write(row.lsbBytes, 0, row.lsbBytes.length);
+            }
+            int rowBaseTileIdx = ty * tilesX;
+            for (int tx = 0; tx < tilesX; tx++) {
+                int tileIdx = rowBaseTileIdx + tx;
+                lsbTileRelOffsets[tileIdx] = rowLsbBase + row.lsbRelOff[tx];
+                long digest64 = row.digests[tx];
+
+                if (row.uniform[tx]) {
+                    long ptr64 = makeUniformInlinePointer(row.firstRgba[tx]);
+                    pointerDir[tileIdx] = ptr64;
+                    syndromes[tileIdx] = LcvPrimitives.computeHammingSecDed8(ptr64);
+                    if (encoderState != null) {
+                        encoderState.lastTileDigest64[tileIdx] = digest64;
+                        encoderState.cleanAckRunLength[tileIdx] = 65;
+                    }
+                    continue;
+                }
+
+                if (row.cleanAck[tx] && encoderState != null) {
+                    int sbDelta = encoderState.cleanAckRunLength[tileIdx] + 1;
+                    encoderState.cleanAckRunLength[tileIdx] = sbDelta;
+                    long ptr64 = makeTemporalCleanAckPointer(
+                        sbDelta,
+                        encoderState.anchorRelOffset[tileIdx],
+                        encoderState.anchorTotalLen[tileIdx]
+                    );
+                    pointerDir[tileIdx] = ptr64;
+                    syndromes[tileIdx] = LcvPrimitives.computeHammingSecDed8(ptr64);
+                    continue;
+                }
+
+                int relMsbOff = rowMsbBase + row.msbRelOff[tx];
+                int msbLen = row.msbLen[tx];
+                int lsbLen = row.lsbLen[tx];
+                long ptr64 = makeActiveTilePointer(relMsbOff, msbLen, lsbLen);
+                pointerDir[tileIdx] = ptr64;
+                syndromes[tileIdx] = LcvPrimitives.computeHammingSecDed8(ptr64);
+
+                if (encoderState != null) {
+                    encoderState.lastTileDigest64[tileIdx] = digest64;
+                    encoderState.cleanAckRunLength[tileIdx] = 0;
+                    encoderState.anchorRelOffset[tileIdx] = relMsbOff;
+                    encoderState.anchorTotalLen[tileIdx] = msbLen;
+                }
+            }
+        }
+
+        byte[] rawMsbPool = msbPoolOut.toByteArray();
+        byte[] rawLsbPool = buildIndexedLsbPool(nTiles, lsbTileRelOffsets, lsbPayloadOut.toByteArray());
+
+        int flags8 = 0;
+        byte[] finalMsbPool = rawMsbPool;
+        byte[] finalLsbPool = rawLsbPool;
+        if (useZstdPool && ZSTD_COMPRESS != null) {
+            finalMsbPool = compressZstdFrameWithSizeHeader(rawMsbPool);
+            finalLsbPool = rawLsbPool.length > 0 ? compressZstdFrameWithSizeHeader(rawLsbPool) : rawLsbPool;
+            flags8 |= FLAG_ZSTD_POOL;
+        }
+
+        return assembleSuperblockBytes(
+            width, height, depthK, flags8,
+            tilesX, tilesY, roiTileX, roiTileY, activeProfile.toPackedU16(),
+            frameIndex64, prevSbOffset64, 60, 1,
+            pointerDir, syndromes, finalMsbPool, finalLsbPool
+        );
+    }
+
     public static byte[] assembleSuperblockBytes(
         int width, int height, int depthK, int flags8,
         int tilesX, int tilesY, int roiTileX, int roiTileY,
@@ -571,6 +756,172 @@ public final class LcvStreamContainer {
             header, rgbaFrames, healedPointers, quarantinedTiles, cleanAckTiles, uniformTiles
         );
     }
+
+    /**
+     * Tile-parallel workgroup decoder that decodes all {@code tilesX * tilesY} independent
+     * {@code 16 x 16 x K} spatiotemporal cubes concurrently across worker threads (mirroring
+     * GPU compute workgroup dispatch) into disjoint tile coordinates of {@code rgbaFrames}.
+     */
+    public static SuperblockDecodeResult decodeSuperblockParallel(
+        byte[] streamBytes, int offset, StreamDecoderState decoderState
+    ) throws LcvCorruptTileException {
+        SuperblockHeader header = readSuperblockHeader(streamBytes, offset);
+        final int width = header.width16();
+        final int height = header.height16();
+        final int depthK = header.depthK8();
+        final int tilesX = header.tilesX16();
+        final int tilesY = header.tilesY16();
+        final int nTiles = header.totalTiles();
+        final int nSamples = LcvPrimitives.TILE_PIXELS * depthK;
+
+        final int[] rgbaFrames = new int[width * height * depthK];
+        final ByteBuffer buf = ByteBuffer.wrap(streamBytes).order(ByteOrder.BIG_ENDIAN);
+
+        final int dirBase = offset + header.directoryOffset();
+        final int synBase = offset + header.secDedOffset();
+        final int msbPoolFileOff = offset + header.msbPoolOffset();
+        final int lsbPoolFileOff = offset + header.lsbPoolOffset();
+
+        final byte[] msbPool;
+        final int msbPoolBase;
+        final byte[] lsbPool;
+        final int lsbPoolBase;
+
+        boolean zstdCompressed = (header.flags8() & FLAG_ZSTD_POOL) != 0;
+        final boolean lsbStripped = (header.flags8() & FLAG_LSB_STRIPPED) != 0 || header.lsbPoolCompressedLen32() == 0;
+
+        if (zstdCompressed) {
+            msbPool = decompressZstdFrameWithSizeHeader(streamBytes, msbPoolFileOff, header.msbPoolCompressedLen32());
+            msbPoolBase = 0;
+            if (!lsbStripped && header.lsbPoolCompressedLen32() > 0) {
+                lsbPool = decompressZstdFrameWithSizeHeader(streamBytes, lsbPoolFileOff, header.lsbPoolCompressedLen32());
+                lsbPoolBase = 0;
+            } else {
+                lsbPool = new byte[0];
+                lsbPoolBase = 0;
+            }
+        } else {
+            msbPool = streamBytes;
+            msbPoolBase = msbPoolFileOff;
+            lsbPool = streamBytes;
+            lsbPoolBase = lsbPoolFileOff;
+        }
+
+        boolean partialRecode = (header.flags8() & FLAG_INLINE_RECODE_PARTIAL) != 0;
+        int checkpointBytes = partialRecode ? 4 : 0;
+        int lsbHeaderTableBytes = nTiles * 4;
+        final ByteBuffer lsbBuf = (!lsbStripped && lsbPool.length >= lsbPoolBase + checkpointBytes + lsbHeaderTableBytes)
+            ? ByteBuffer.wrap(lsbPool).order(ByteOrder.BIG_ENDIAN)
+            : null;
+        final int recodedCursor = (partialRecode && lsbBuf != null)
+            ? (lsbBuf.getShort(lsbPoolBase) & 0xFFFF)
+            : nTiles;
+        final int priorLsbSplitBits = (partialRecode && lsbBuf != null)
+            ? LcvCubeCodec.TuningProfile.fromPackedU16(lsbBuf.getShort(lsbPoolBase + 2) & 0xFFFF).lsbSplitBits()
+            : header.tuningProfile().lsbSplitBits();
+        final int lsbTableBase = lsbPoolBase + checkpointBytes;
+        final int lsbDataBase = lsbTableBase + lsbHeaderTableBytes;
+
+        final int[] perRowHealed = new int[tilesY];
+        final int[] perRowQuarantined = new int[tilesY];
+        final int[] perRowCleanAck = new int[tilesY];
+        final int[] perRowUniform = new int[tilesY];
+
+        java.util.stream.IntStream.range(0, tilesY).parallel().forEach(ty -> {
+            LcvPrimitives.ScratchArena arena = LcvPrimitives.threadArena();
+            int rowHealed = 0;
+            int rowQuarantined = 0;
+            int rowCleanAck = 0;
+            int rowUniform = 0;
+            int rowBaseIdx = ty * tilesX;
+            for (int tx = 0; tx < tilesX; tx++) {
+                int tileIdx = rowBaseIdx + tx;
+                long rawPtr64 = buf.getLong(dirBase + tileIdx * 8);
+                byte syn8 = streamBytes[synBase + tileIdx];
+                long healedPtr64 = LcvPrimitives.healSingleBitFlip64(rawPtr64, syn8);
+
+                if (healedPtr64 == LcvPrimitives.UNCORRECTABLE_DED_SENTINEL) {
+                    rowQuarantined++;
+                    applyFallbackTile(decoderState, tileIdx, tx, ty, width, height, depthK, rgbaFrames);
+                    continue;
+                }
+                if (healedPtr64 != rawPtr64) {
+                    rowHealed++;
+                }
+
+                if (isZeroBodyPointer(healedPtr64)) {
+                    if (isTemporalCleanAckPointer(healedPtr64)) {
+                        rowCleanAck++;
+                        applyFallbackTile(decoderState, tileIdx, tx, ty, width, height, depthK, rgbaFrames);
+                    } else {
+                        rowUniform++;
+                        int rgba = extractUniformInlineRgba(healedPtr64);
+                        Arrays.fill(arena.cubeRgbaTyx, 0, nSamples, rgba);
+                        LcvCubeCodec.scatterCubeTyxToFrames(arena.cubeRgbaTyx, tx, ty, width, height, depthK, rgbaFrames);
+                        updateDecoderCache(decoderState, tileIdx, arena.cubeRgbaTyx, nSamples);
+                    }
+                    continue;
+                }
+
+                int relMsbOff = extractRelByteOffset30(healedPtr64);
+                int msbLen = extractMsbSliceLen16(healedPtr64);
+                int lsbLen = (lsbStripped || lsbBuf == null) ? 0 : extractLsbSliceLen16(healedPtr64);
+                int tileLsbOff = 0;
+                if (lsbLen > 0 && lsbBuf != null) {
+                    int relLsbOff = lsbBuf.getInt(lsbTableBase + tileIdx * 4);
+                    tileLsbOff = lsbDataBase + relLsbOff;
+                }
+                int tileSplitBits = (tileIdx < recodedCursor)
+                    ? header.tuningProfile().lsbSplitBits()
+                    : priorLsbSplitBits;
+
+                try {
+                    LcvCubeCodec.decodeSplitCubeRgba(
+                        msbPool, msbPoolBase + relMsbOff, msbLen,
+                        lsbPool, tileLsbOff, lsbLen,
+                        false, depthK, tileSplitBits, arena, arena.cubeRgbaTyx
+                    );
+                    LcvCubeCodec.scatterCubeTyxToFrames(arena.cubeRgbaTyx, tx, ty, width, height, depthK, rgbaFrames);
+                    updateDecoderCache(decoderState, tileIdx, arena.cubeRgbaTyx, nSamples);
+                } catch (LcvCorruptTileException ex) {
+                    rowQuarantined++;
+                    applyFallbackTile(decoderState, tileIdx, tx, ty, width, height, depthK, rgbaFrames);
+                }
+            }
+            perRowHealed[ty] = rowHealed;
+            perRowQuarantined[ty] = rowQuarantined;
+            perRowCleanAck[ty] = rowCleanAck;
+            perRowUniform[ty] = rowUniform;
+        });
+
+        int healedPointers = 0;
+        int quarantinedTiles = 0;
+        int cleanAckTiles = 0;
+        int uniformTiles = 0;
+        for (int ty = 0; ty < tilesY; ty++) {
+            healedPointers += perRowHealed[ty];
+            quarantinedTiles += perRowQuarantined[ty];
+            cleanAckTiles += perRowCleanAck[ty];
+            uniformTiles += perRowUniform[ty];
+        }
+
+        return new SuperblockDecodeResult(
+            header, rgbaFrames, healedPointers, quarantinedTiles, cleanAckTiles, uniformTiles
+        );
+    }
+
+    private record TileRowEncodeResult(
+        boolean[] uniform,
+        int[] firstRgba,
+        boolean[] cleanAck,
+        long[] digests,
+        int[] msbRelOff,
+        int[] msbLen,
+        int[] lsbRelOff,
+        int[] lsbLen,
+        byte[] msbBytes,
+        byte[] lsbBytes
+    ) {}
 
     /**
      * Scans an append-only {@code .lcv} stream (potentially truncated mid-write by {@code SIGKILL})
@@ -933,7 +1284,11 @@ public final class LcvStreamContainer {
         return 0x88;
     }
 
-    private static byte[] compressZstdFrameWithSizeHeader(byte[] raw) {
+    static boolean isZstdAvailable() {
+        return ZSTD_COMPRESS != null && ZSTD_DECOMPRESS != null;
+    }
+
+    static byte[] compressZstdFrameWithSizeHeader(byte[] raw) {
         try {
             byte[] compressed = (byte[]) ZSTD_COMPRESS.invoke(null, raw, 1);
             byte[] framed = new byte[4 + compressed.length];
@@ -945,7 +1300,7 @@ public final class LcvStreamContainer {
         }
     }
 
-    private static byte[] decompressZstdFrameWithSizeHeader(byte[] src, int off, int len) throws LcvCorruptTileException {
+    static byte[] decompressZstdFrameWithSizeHeader(byte[] src, int off, int len) throws LcvCorruptTileException {
         if (ZSTD_DECOMPRESS == null || len < 4 || off + len > src.length) {
             throw new LcvCorruptTileException("CBIT: invalid Zstd pool frame");
         }

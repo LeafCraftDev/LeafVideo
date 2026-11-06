@@ -400,6 +400,92 @@ class LcvStreamAndTransformTest {
             "Resumed mid-crash recode must be 100% byte-for-byte identical to uninterrupted recode"
         );
     }
+
+    @Test
+    void archivalZstdPoolSupportsCropCoalesceAndInlineRecode() throws LcvCorruptTileException {
+        int width = 64;
+        int height = 64;
+        int depthK = 4;
+        int[] frames = createProceduralFrames(width, height, depthK, 4096L);
+
+        byte[] rawSb = LcvStreamContainer.encodeSuperblock(
+            frames, width, height, depthK, 0L, 0L, 2, 2,
+            LcvCubeCodec.TuningProfile.ARCHIVAL_LOSSLESS, false, null
+        );
+        byte[] zstdSb = LcvStreamContainer.encodeSuperblock(
+            frames, width, height, depthK, 0L, 0L, 2, 2,
+            LcvCubeCodec.TuningProfile.ARCHIVAL_LOSSLESS, true, null
+        );
+        LcvStreamContainer.SuperblockHeader zstdHdr = LcvStreamContainer.readSuperblockHeader(zstdSb, 0);
+        assertTrue((zstdHdr.flags8() & LcvStreamContainer.FLAG_ZSTD_POOL) != 0);
+
+        // 1. cropSubRegion on FLAG_ZSTD_POOL superblock must match raw cropped superblock pixels and preserve FLAG_ZSTD_POOL
+        byte[] croppedRaw = LcvOnDiskTransformer.cropSubRegion(rawSb, 1, 1, 2, 2);
+        byte[] croppedZstd = LcvOnDiskTransformer.cropSubRegion(zstdSb, 1, 1, 2, 2);
+        LcvStreamContainer.SuperblockDecodeResult decCroppedRaw = LcvStreamContainer.decodeSuperblock(croppedRaw, 0, null);
+        LcvStreamContainer.SuperblockDecodeResult decCroppedZstd = LcvStreamContainer.decodeSuperblock(croppedZstd, 0, null);
+        assertEquals(0, decCroppedZstd.quarantinedTiles());
+        assertTrue((decCroppedZstd.header().flags8() & LcvStreamContainer.FLAG_ZSTD_POOL) != 0);
+        assertArrayEquals(decCroppedRaw.rgbaFrames(), decCroppedZstd.rgbaFrames());
+
+        // 2. coalesceRunsByDistance on FLAG_ZSTD_POOL superblock must match raw coalesced superblock pixels
+        LcvCubeCodec.DistanceRlePolicy policy = new LcvCubeCodec.DistanceRlePolicy(4, 1, 1.5);
+        byte[] coalescedRaw = LcvOnDiskTransformer.coalesceRunsByDistance(rawSb, 2, 2, policy);
+        byte[] coalescedZstd = LcvOnDiskTransformer.coalesceRunsByDistance(zstdSb, 2, 2, policy);
+        LcvStreamContainer.SuperblockDecodeResult decCoalRaw = LcvStreamContainer.decodeSuperblock(coalescedRaw, 0, null);
+        LcvStreamContainer.SuperblockDecodeResult decCoalZstd = LcvStreamContainer.decodeSuperblock(coalescedZstd, 0, null);
+        assertEquals(0, decCoalZstd.quarantinedTiles());
+        assertTrue((decCoalZstd.header().flags8() & LcvStreamContainer.FLAG_ZSTD_POOL) != 0);
+        assertArrayEquals(decCoalRaw.rgbaFrames(), decCoalZstd.rgbaFrames());
+
+        // 3. recodePacketsInline on FLAG_ZSTD_POOL superblock must unwrap Zstd pools cleanly
+        byte[] recodedRaw = LcvOnDiskTransformer.recodePacketsInline(
+            rawSb, 2, 2, LcvCubeCodec.TuningProfile.HARSH_RF_UEP_ZERO_WAIT, true, Integer.MAX_VALUE
+        );
+        byte[] recodedZstd = LcvOnDiskTransformer.recodePacketsInline(
+            zstdSb, 2, 2, LcvCubeCodec.TuningProfile.HARSH_RF_UEP_ZERO_WAIT, true, Integer.MAX_VALUE
+        );
+        assertArrayEquals(recodedRaw, recodedZstd);
+    }
+
+    @Test
+    void tileParallelEncodeAndDecodeProduceByteExactParityWithSingleThread() throws LcvCorruptTileException {
+        int width = 128;
+        int height = 64;
+        int depthK = 8;
+        int[] frames0 = createProceduralFrames(width, height, depthK, 777L);
+        int[] frames1 = createProceduralFrames(width, height, depthK, 777L); // Identical -> tests TEMPORAL_CLEAN_ACK in parallel
+
+        LcvStreamContainer.StreamEncoderState seqEncState = new LcvStreamContainer.StreamEncoderState(width, height);
+        LcvStreamContainer.StreamEncoderState parEncState = new LcvStreamContainer.StreamEncoderState(width, height);
+
+        byte[] seqSb0 = LcvStreamContainer.encodeSuperblock(
+            frames0, width, height, depthK, 0L, 0L, 4, 2,
+            LcvCubeCodec.TuningProfile.OBS_REALTIME_LOSSLESS, false, seqEncState
+        );
+        byte[] parSb0 = LcvStreamContainer.encodeSuperblockParallel(
+            frames0, width, height, depthK, 0L, 0L, 4, 2,
+            LcvCubeCodec.TuningProfile.OBS_REALTIME_LOSSLESS, false, parEncState
+        );
+        assertArrayEquals(seqSb0, parSb0, "Parallel workgroup encoder must produce 100% byte-identical Superblock 0");
+
+        byte[] seqSb1 = LcvStreamContainer.encodeSuperblock(
+            frames1, width, height, depthK, depthK, seqSb0.length, 4, 2,
+            LcvCubeCodec.TuningProfile.OBS_REALTIME_LOSSLESS, true, seqEncState
+        );
+        byte[] parSb1 = LcvStreamContainer.encodeSuperblockParallel(
+            frames1, width, height, depthK, depthK, parSb0.length, 4, 2,
+            LcvCubeCodec.TuningProfile.OBS_REALTIME_LOSSLESS, true, parEncState
+        );
+        assertArrayEquals(seqSb1, parSb1, "Parallel workgroup encoder must produce 100% byte-identical Superblock 1 with Clean-ACKs and Zstd");
+
+        LcvStreamContainer.StreamDecoderState parDecState = new LcvStreamContainer.StreamDecoderState(width, height, depthK);
+        LcvStreamContainer.SuperblockDecodeResult dec0 = LcvStreamContainer.decodeSuperblockParallel(parSb0, 0, parDecState);
+        LcvStreamContainer.SuperblockDecodeResult dec1 = LcvStreamContainer.decodeSuperblockParallel(parSb1, 0, parDecState);
+        assertArrayEquals(frames0, dec0.rgbaFrames());
+        assertArrayEquals(frames1, dec1.rgbaFrames());
+        assertTrue(dec1.cleanAckReusedTiles() > 0);
+    }
     private static int[] createProceduralFrames(int width, int height, int depthK, long seed) {
         SplittableRandom rng = new SplittableRandom(seed);
         int framePixels = width * height;

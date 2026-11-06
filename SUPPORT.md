@@ -32,13 +32,13 @@ Check these first. Most questions are already answered:
 
 | Intent | Channel |
 |---|---|
-| "How do I configure / use X?" (not a bug) | [GitHub Discussions](https://github.com/LeafCraftDev/Video/discussions) or the `#support` Forum in the `LeafCraft Plugin Support` Discord |
+| "How do I configure / use X?" (not a bug) | [GitHub Discussions](https://github.com/LeafCraftDev/LeafVideo/discussions) or the `#support` Forum in the `LeafCraft Plugin Support` Discord |
 | Community discussion | SpigotMC resource discussion thread or `#general` in `LeafCraft Plugin Support` |
-| Suspected bug (crash, stack trace, broken behavior) | [New bug report](https://github.com/LeafCraftDev/Video/issues/new?template=bug_report.md) or `#support` Forum thread (with `./gradlew :leaf-video:test test`, `/version`, `./gradlew :leaf-video:test test`, and an `mclo.gs` log) |
+| Suspected bug (crash, stack trace, broken behavior) | [New bug report](https://github.com/LeafCraftDev/LeafVideo/issues/new?template=bug_report.md) or `#support` Forum thread (with `./gradlew :leaf-video:test test`, `/version`, `./gradlew :leaf-video:test test`, and an `mclo.gs` log) |
 | LeafVideo priority support | BuiltByBit ticket or `#support` Forum thread with the `@Pro Supporter` role (`💎 Pro Priority`) |
 | Feature idea | Open a **Discussion** first; issues only after triage |
-| **Security vulnerability** | **Do not open a public issue.** See [`SECURITY.md`](SECURITY.md) and use [private advisories](https://github.com/LeafCraftDev/Video/security/advisories/new) |
-| Addon development help | [Addon developer guide](https://dailystruggle.github.io/LeafVideo/FOR_ADDON_DEVELOPERS/) first, then [GitHub Discussions](https://github.com/LeafCraftDev/Video/discussions) or `#development` in `LeafCraft Plugin Support` |
+| **Security vulnerability** | **Do not open a public issue.** See [`SECURITY.md`](SECURITY.md) and use [private advisories](https://github.com/LeafCraftDev/LeafVideo/security/advisories/new) |
+| Addon development help | [Addon developer guide](https://dailystruggle.github.io/LeafVideo/FOR_ADDON_DEVELOPERS/) first, then [GitHub Discussions](https://github.com/LeafCraftDev/LeafVideo/discussions) or `#development` in `LeafCraft Plugin Support` |
 
 **Do not** use the GitHub issue tracker for questions, "how do I" requests, or
 plugin-conflict debugging without first reproducing with LeafVideo alone. Those

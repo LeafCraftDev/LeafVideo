@@ -53,7 +53,7 @@ More detailed instructions can be found here - [`docs/FOR_CONTRIBUTORS.md`](docs
 
 1. **Clone the repository**:
    ```sh
-   git clone https://github.com/LeafCraftDev/Video.git
+   git clone https://github.com/LeafCraftDev/LeafVideo.git
    cd LeafVideo
    ```
 2. **Build the project**:

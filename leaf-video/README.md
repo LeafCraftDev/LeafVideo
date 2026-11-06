@@ -2,7 +2,7 @@
 
 Standalone, zero-dependency Java 17+ reference codec, Matroska (`.mkv` `V_LCV1`) packetizer, and compressed-domain on-disk stream transformer for **3D Spatiotemporal Gray-Hilbert & Adaptive Roaring Video (`LCV-ICD-1.0`)**.
 
-- **Repository:** [`https://github.com/LeafCraftDev/Video`](https://github.com/LeafCraftDev/Video)
+- **Repository:** [`https://github.com/LeafCraftDev/LeafVideo`](https://github.com/LeafCraftDev/LeafVideo)
 - **Specification (`LCV-ICD-1.0`):** [`docs/ICD.md`](docs/ICD.md) (**MIT License**)
 - **Reference Codec License:** [**MIT License (`LICENSE`)**](LICENSE) — zero vendor lock-in, zero patent/royalty friction, universal playback
 - **Product Suite Overview (`resource/LeafVideo`):** [`../resource/LeafVideo/README.md`](../resource/LeafVideo/README.md)
@@ -50,15 +50,24 @@ Following [`docs/dev/LICENSING.md`](../docs/dev/LICENSING.md), the `.lcv` specif
 - **Interface Control Document (`LCV-ICD-1.0`):** [`docs/ICD.md`](docs/ICD.md)
 - **Architecture Decision Records (`ADR`):** [`docs/adr/README.md`](docs/adr/README.md)
   - [`leaf-video-ADR-001`](docs/adr/leaf-video-ADR-001-spatiotemporal-gray-hilbert-video-codec-and-mkv-transform.md): Spatiotemporal Gray-Hilbert & Adaptive Roaring Video Codec, Distance-Scaled RLE Concatenation, `.mkv` (`V_LCV1`) Crash Recovery & Compressed-Domain On-Disk Transforms
-  - [`leaf-video-ADR-002`](docs/adr/leaf-video-ADR-002-three-tier-open-standard-and-commercial-product-architecture.md): Three-Tier Open Standard (`MIT`) and Commercial Workflow Product Architecture (`LeafCraftDev/Video`)
+  - [`leaf-video-ADR-002`](docs/adr/leaf-video-ADR-002-three-tier-open-standard-and-commercial-product-architecture.md): Three-Tier Open Standard (`MIT`) and Commercial Workflow Product Architecture (`LeafCraftDev/LeafVideo`)
 - **Changelog:** [`CHANGELOG.md`](CHANGELOG.md)
 - **License (`MIT`):** [`LICENSE`](LICENSE)
 
 ---
 
-## Verification & Proof Suite
+## Verification & Reference Codec Suite (`:leaf-video`)
 
 ```bash
-# Run the JUnit 5 lossless, distance-RLE, compressed-domain transform, and crash-recovery torture suite
+# 1. Run the JUnit 5 lossless, distance-RLE, compressed-domain transform,
+#    and crash/bit-rot recovery proof suites
 ./gradlew :leaf-video:test --console=plain -q
+
+# 2. Run the comparative multi-codec compression & throughput proof suite
+./gradlew :leaf-video:test --tests "*LcvBenchmarkAndProofSuiteTest*" --console=plain -q
+
+# 3. Run the .mkv (V_LCV1) truncation, SEC-DED single-bit flip, and 4 KiB sector-zeroing torture matrix
+./gradlew :leaf-video:test --tests "*LcvRecoveryTortureTest*" --console=plain -q
 ```
+
+- **Note on Standalone Program & Studio Integrations:** The runnable application CLI (`LcvCli`) and OBS Studio / Blender VSE studio integrations (`:resource:LeafVideo`) are maintained in private repositories (`LeafCraftDev/MC`). Public [`LeafCraftDev/LeafVideo`](https://github.com/LeafCraftDev/LeafVideo) publishes the complete MIT reference codec library (`:leaf-video`) and normative `LCV-ICD-1.0` / ADR context.

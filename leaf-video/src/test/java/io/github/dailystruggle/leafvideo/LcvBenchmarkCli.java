@@ -43,6 +43,8 @@ public final class LcvBenchmarkCli {
         double lcvDistanceRleRatio,
         double encodeMbPerSec,
         double decodeMbPerSec,
+        double parallelEncodeMbPerSec,
+        double parallelDecodeMbPerSec,
         double distanceRlePsnrDb,
         int lcvHarshRfUepBytes,
         double lcvHarshRfUepRatio,
@@ -92,6 +94,20 @@ public final class LcvBenchmarkCli {
         LcvCubeCodec.DistanceRlePolicy distPolicy = new LcvCubeCodec.DistanceRlePolicy(4, 0, 1.25);
         int roiX = (width / 16) / 2;
         int roiY = (height / 16) / 2;
+
+        // Warmup single-thread & ForkJoinPool worker ThreadLocal<ScratchArena> instances before timing
+        for (int warmType : new int[]{0, 2}) {
+            int[] warmupFrames = generateWorkloadFrames(warmType, width, height, depthK, 0);
+            LcvStreamContainer.encodeSuperblock(
+                warmupFrames, width, height, depthK, 0L, 0L, roiX, roiY,
+                LcvCubeCodec.TuningProfile.OBS_REALTIME_LOSSLESS, false, null
+            );
+            byte[] warmupSb = LcvStreamContainer.encodeSuperblockParallel(
+                warmupFrames, width, height, depthK, 0L, 0L, roiX, roiY,
+                LcvCubeCodec.TuningProfile.OBS_REALTIME_LOSSLESS, false, null
+            );
+            LcvStreamContainer.decodeSuperblockParallel(warmupSb, 0, null);
+        }
 
         for (int wIdx = 0; wIdx < names.length; wIdx++) {
             List<int[]> sbFramesList = new ArrayList<>(superblockCount);
@@ -178,6 +194,45 @@ public final class LcvBenchmarkCli {
             double rawMiB = totalRawBytes / (1024.0 * 1024.0);
             double encMbPerSec = rawMiB / (encElapsedNs / 1_000_000_000.0);
             double decMbPerSec = rawMiB / (decElapsedNs / 1_000_000_000.0);
+
+            // Measure Tile-Parallel Workgroup Encode & Decode + verify 100% byte-for-byte parity
+            LcvStreamContainer.StreamEncoderState parEncState = new LcvStreamContainer.StreamEncoderState(width, height);
+            List<byte[]> parSbs = new ArrayList<>(superblockCount);
+            long parEncStartNs = System.nanoTime();
+            long parRunningOff = 0L;
+            for (int s = 0; s < superblockCount; s++) {
+                byte[] parSb = LcvStreamContainer.encodeSuperblockParallel(
+                    sbFramesList.get(s), width, height, depthK,
+                    (long) s * depthK, parRunningOff, roiX, roiY,
+                    LcvCubeCodec.TuningProfile.OBS_REALTIME_LOSSLESS, false, parEncState
+                );
+                parSbs.add(parSb);
+                parRunningOff += parSb.length;
+            }
+            long parEncElapsedNs = Math.max(1L, System.nanoTime() - parEncStartNs);
+            for (int s = 0; s < superblockCount; s++) {
+                if (!java.util.Arrays.equals(losslessSbs.get(s), parSbs.get(s))) {
+                    throw new IllegalStateException("Parallel encode byte-parity violation on workload " + names[wIdx]);
+                }
+            }
+
+            LcvStreamContainer.StreamDecoderState parDecState = new LcvStreamContainer.StreamDecoderState(width, height, depthK);
+            List<int[]> parDecFrames = new ArrayList<>(superblockCount);
+            long parDecStartNs = System.nanoTime();
+            for (int s = 0; s < superblockCount; s++) {
+                LcvStreamContainer.SuperblockDecodeResult parDec = LcvStreamContainer.decodeSuperblockParallel(
+                    losslessSbs.get(s), 0, parDecState
+                );
+                parDecFrames.add(parDec.rgbaFrames());
+            }
+            long parDecElapsedNs = Math.max(1L, System.nanoTime() - parDecStartNs);
+            for (int s = 0; s < superblockCount; s++) {
+                if (!java.util.Arrays.equals(sbFramesList.get(s), parDecFrames.get(s))) {
+                    throw new IllegalStateException("Parallel decode parity violation on workload " + names[wIdx]);
+                }
+            }
+            double parEncMbPerSec = rawMiB / (parEncElapsedNs / 1_000_000_000.0);
+            double parDecMbPerSec = rawMiB / (parDecElapsedNs / 1_000_000_000.0);
 
             // Measure Harsh-RF UEP Zero-Wait Profile (K = 1, s = 3, d_merge + Section 4B UEP stripped)
             int harshRfBytes = 0;
@@ -270,7 +325,7 @@ public final class LcvBenchmarkCli {
                 (double) totalRawBytes / losslessTotal,
                 (double) totalRawBytes / lcvZstdTotal,
                 (double) totalRawBytes / distRleTotal,
-                encMbPerSec, decMbPerSec, psnr,
+                encMbPerSec, decMbPerSec, parEncMbPerSec, parDecMbPerSec, psnr,
                 harshRfBytes, (double) totalRawBytes / harshRfBytes, uepPsnr,
                 strippedK8RawBytes, strippedK8ZstdBytes, s3Psnr,
                 extBytes
@@ -391,6 +446,30 @@ public final class LcvBenchmarkCli {
                     s3PsnrStr
                 ));
             }
+
+            if (rows.get(0).externalCodecBytes().containsKey("h264_nvenc")
+                || rows.get(0).externalCodecBytes().containsKey("h264_nvenc_cqp18")) {
+                md.append("\n### 4. Hardware GPU Encoding (`h264_nvenc` / `hevc_nvenc`) & Tile-Parallel `.lcv` Acceleration\n\n");
+                md.append("| Workload (`640x368`, 16f) | `h264_nvenc` Lossless (`gbrp`) | `hevc_nvenc` Lossless (`gbrp`) | OBS Default `h264_nvenc` (`P5 CQP-18 4:2:0`) | OBS `hevc_nvenc` (`P5 CQP-18 4:2:0`) | **`.lcv` Lossless (`OBS_REALTIME`)** | **`.lcv + Zstd` (`ARCHIVAL`)** | **`.lcv` 1T -> Parallel Encode** | **`.lcv` 1T -> Parallel Decode** |\n");
+                md.append("| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
+                for (WorkloadBenchmarkRow r : rows) {
+                    Map<String, Integer> ext = r.externalCodecBytes();
+                    int raw = r.rawBytes();
+                    md.append(String.format(
+                        Locale.ROOT,
+                        "| %s | %s | %s | %s | %s | **`%.1fx` (`%,d B`)** | **`%.1fx` (`%,d B`)** | `%.1f` -> **`%.1f MB/s`** | `%.1f` -> **`%.1f MB/s`** |\n",
+                        r.workloadName(),
+                        fmtRatio(raw, ext.get("h264_nvenc")),
+                        fmtRatio(raw, ext.get("hevc_nvenc")),
+                        fmtRatio(raw, ext.get("h264_nvenc_cqp18")),
+                        fmtRatio(raw, ext.get("hevc_nvenc_cqp18")),
+                        r.lcvLosslessRatio(), r.lcvLosslessBytes(),
+                        r.lcvZstdRatio(), r.lcvZstdBytes(),
+                        r.encodeMbPerSec(), r.parallelEncodeMbPerSec(),
+                        r.decodeMbPerSec(), r.parallelDecodeMbPerSec()
+                    ));
+                }
+            }
         }
 
         md.append(String.format(
@@ -432,7 +511,11 @@ public final class LcvBenchmarkCli {
                 {"x265", ".mkv", "-c:v", "libx265", "-x265-params", "lossless=1:log-level=none", "-preset", "ultrafast", "-pix_fmt", "gbrp"},
                 {"x265_crf12", ".mkv", "-c:v", "libx265", "-crf", "12", "-x265-params", "log-level=none", "-preset", "ultrafast", "-pix_fmt", "gbrp"},
                 {"vp9", ".mkv", "-c:v", "libvpx-vp9", "-lossless", "1", "-deadline", "realtime", "-cpu-used", "8", "-pix_fmt", "gbrp"},
-                {"x264rgb", ".mkv", "-c:v", "libx264rgb", "-qp", "0", "-preset", "ultrafast", "-pix_fmt", "rgb24"}
+                {"x264rgb", ".mkv", "-c:v", "libx264rgb", "-qp", "0", "-preset", "ultrafast", "-pix_fmt", "rgb24"},
+                {"h264_nvenc", ".mkv", "-c:v", "h264_nvenc", "-tune", "lossless", "-preset", "p1", "-pix_fmt", "gbrp"},
+                {"hevc_nvenc", ".mkv", "-c:v", "hevc_nvenc", "-tune", "lossless", "-preset", "p1", "-pix_fmt", "gbrp"},
+                {"h264_nvenc_cqp18", ".mkv", "-c:v", "h264_nvenc", "-rc", "constqp", "-qp", "18", "-preset", "p5", "-pix_fmt", "yuv420p"},
+                {"hevc_nvenc_cqp18", ".mkv", "-c:v", "hevc_nvenc", "-rc", "constqp", "-qp", "18", "-preset", "p5", "-pix_fmt", "yuv420p"}
             };
 
             for (String[] spec : specs) {

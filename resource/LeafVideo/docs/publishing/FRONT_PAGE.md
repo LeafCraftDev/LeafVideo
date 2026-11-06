@@ -3,7 +3,7 @@
 Record one lightweight `.lcv` / `.mkv` (`V_LCV1`) stream and extract 9:16 vertical shorts in `0.9 ms` (`160x-735x` faster than re-encoding), strip proxy previews in `0.1 ms`, scrub `RGBA` overlays at `240-402 MB/s`, and survive any OBS, NLE, or wireless link failure.
 
 - **Open Standard & Reference Codec (`MIT`):** [`LCV-ICD-1.0` (`leaf-video/docs/ICD.md`)](../../../../leaf-video/docs/ICD.md) and [`:leaf-video` (`leaf-video/`)](../../../../leaf-video/README.md) are 100% Free & Open Source (**MIT License**) with zero vendor lock-in and zero patent-pool royalties.
-- **GitHub Repository:** [`https://github.com/LeafCraftDev/Video`](https://github.com/LeafCraftDev/Video)
+- **GitHub Repository:** [`https://github.com/LeafCraftDev/LeafVideo`](https://github.com/LeafCraftDev/LeafVideo)
 
 ---
 

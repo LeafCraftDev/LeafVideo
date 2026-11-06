@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 Leaf26 / LeafCraft (https://github.com/LeafCraftDev/Video)
+Copyright (c) 2026 Leaf26 / LeafCraft (https://github.com/LeafCraftDev/LeafVideo)
 
 This MIT License governs the Tier 1 Open Standard & Core Reference (`leaf-video/`):
   - The `.lcv` / Matroska `V_LCV1` Binary Interface Control Document (`leaf-video/docs/ICD.md`, `LCV-ICD-1.0`);
