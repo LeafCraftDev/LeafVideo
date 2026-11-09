@@ -21,7 +21,9 @@ def nativeTestBin = layout.buildDirectory.file(
 def compileAndRunNativeGate1 = tasks.register('compileAndRunNativeGate1') {
     group = 'verification'
     description = 'Compiles and runs the canonical native C11 Gate 1 verification suite against resource/LeafVideo/native/lcv_accel.c.'
-    dependsOn ':resource:LeafVideo:compileNativeAccel'
+    if (findProject(':resource:LeafVideo') != null) {
+        dependsOn ':resource:LeafVideo:compileNativeAccel'
+    }
     onlyIf {
         rootProject.file('resource/LeafVideo/native/lcv_accel.c').exists()
     }

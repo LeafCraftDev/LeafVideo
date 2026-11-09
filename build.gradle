@@ -5,6 +5,14 @@ plugins {
 group = 'io.github.dailystruggle'
 version = '0.1.0'
 
+tasks.register('spotlessCheck') {
+    group = 'verification'
+}
+
+tasks.register('verifyJava17Bytecode') {
+    group = 'verification'
+}
+
 allprojects {
     group = 'io.github.dailystruggle'
     version = '0.1.0'
@@ -15,6 +23,11 @@ allprojects {
 
 subprojects {
     apply plugin: 'java-library'
+    apply plugin: 'jacoco'
+
+    tasks.register('verifyJava17Bytecode') {
+        group = 'verification'
+    }
 
     tasks.withType(JavaCompile).configureEach {
         options.encoding = 'UTF-8'
