@@ -34,13 +34,15 @@ Except as expressly permitted in Section 3 (Open .lcv / V_LCV1 Format &
       and unrestricted control over all video recordings, crops, proxies, and
       telemetry streams (.lcv, .mkv V_LCV1, .mp4, and backups) created,
       cropped, stripped, compacted, or recovered by the Software.
-  (b) Open Format Specification & Reference Codec (MIT): The .lcv / V_LCV1
+  (b) Open Format Specification & Reference Module (MIT): The .lcv / V_LCV1
       (LeafCraft Video) binary format Interface Control Document
       (leaf-video/docs/ICD.md, routed from resource/LeafVideo/docs/ICD.md,
       LCV-ICD-1.0), the governing Architecture Decision Records
-      (leaf-video-ADR-001, leaf-video-ADR-002), and the Java 17+ reference
-      codec library (leaf-video/, package io.github.dailystruggle.leafvideo)
-      are licensed separately under the MIT License (leaf-video/LICENSE).
+      (leaf-video-ADR-001..leaf-video-ADR-004), the :leaf-video specification
+      and verification module (leaf-video/), and the archived Java 17+
+      reference codec sources (leaf-video/archive/java-staging/, package
+      io.github.dailystruggle.leafvideo) are licensed separately under the
+      MIT License (leaf-video/LICENSE).
       Any developer, streamer, video editor, NLE vendor, media player (ffmpeg,
       VLC), or hardware integrator may freely inspect, compile, implement, or
       reverse-engineer the .lcv / V_LCV1 binary format and :leaf-video for

@@ -1,7 +1,97 @@
 version = '0.1.0'
 
+sourceSets {
+    main {
+        java.srcDirs = []
+    }
+    test {
+        java.srcDirs = []
+    }
+}
+
 tasks.named('compileJava', JavaCompile).configure {
     options.release = 17
+}
+
+def osNameLower = System.getProperty('os.name', '').toLowerCase(Locale.ROOT)
+def nativeTestBin = layout.buildDirectory.file(
+    osNameLower.contains('win') ? 'native/lcv_cli_and_test.exe' : 'native/lcv_cli_and_test'
+)
+
+def compileAndRunNativeGate1 = tasks.register('compileAndRunNativeGate1') {
+    group = 'verification'
+    description = 'Compiles and runs the canonical native C11 Gate 1 verification suite against resource/LeafVideo/native/lcv_accel.c.'
+    dependsOn ':resource:LeafVideo:compileNativeAccel'
+    onlyIf {
+        rootProject.file('resource/LeafVideo/native/lcv_accel.c').exists()
+    }
+    inputs.files(
+        rootProject.file('resource/LeafVideo/native/leafvideo.h'),
+        rootProject.file('resource/LeafVideo/native/lcv_accel.c'),
+        rootProject.file('resource/LeafVideo/native/lcv_codec_system_plugins.c'),
+        rootProject.file('resource/LeafVideo/native/obs_leafvideo_plugin.c'),
+        rootProject.file('resource/LeafVideo/native/lcv_cli_and_test.c'),
+        rootProject.file('resource/LeafVideo/native/lcv_cube_kernel.comp')
+    )
+    outputs.file(nativeTestBin)
+    doLast {
+        def compiler = ['gcc', 'clang'].find { bin ->
+            try {
+                def p = new ProcessBuilder(bin, '--version').redirectErrorStream(true).start()
+                p.inputStream.bytes
+                return p.waitFor() == 0
+            } catch (Exception ignored) {
+                return false
+            }
+        }
+        if (compiler == null) {
+            logger.lifecycle('[leaf-video] Skipping native C11 Gate 1 compile (gcc/clang not found on PATH).')
+            return
+        }
+        def outFile = nativeTestBin.get().asFile
+        outFile.parentFile.mkdirs()
+        def javaHome = new File(System.getProperty('java.home'))
+        def includeDirs = [
+            new File(javaHome, 'include'),
+            new File(javaHome.parentFile ?: javaHome, 'include'),
+            new File('/usr/lib/jvm/default-java/include'),
+            new File('/usr/lib/jvm/java-21-openjdk-amd64/include'),
+            new File('/usr/lib/jvm/java-25-openjdk/include')
+        ].findAll { new File(it, 'jni.h').exists() }
+        def jniInc = includeDirs.isEmpty() ? null : includeDirs[0]
+        def platformInc = (jniInc == null) ? null : [
+            new File(jniInc, 'linux'),
+            new File(jniInc, 'win32'),
+            new File(jniInc, 'darwin')
+        ].find { it.exists() }
+        def cmd = [compiler.toString(), '-O3', '-march=native', '-std=c11', "-I${rootProject.file('resource/LeafVideo/native').absolutePath}"]
+        if (jniInc != null) cmd.add("-I${jniInc.absolutePath}".toString())
+        if (platformInc != null) cmd.add("-I${platformInc.absolutePath}".toString())
+        cmd.addAll([
+            rootProject.file('resource/LeafVideo/native/lcv_accel.c').absolutePath,
+            rootProject.file('resource/LeafVideo/native/lcv_codec_system_plugins.c').absolutePath,
+            rootProject.file('resource/LeafVideo/native/lcv_cli_and_test.c').absolutePath,
+            '-o', outFile.absolutePath
+        ])
+        if (!osNameLower.contains('win')) {
+            cmd.addAll(['-ldl', '-lpthread', '-lm'])
+        }
+        def compileProc = new ProcessBuilder(cmd.collect { it.toString() }).redirectErrorStream(true).start()
+        def compileOut = compileProc.inputStream.getText('UTF-8')
+        if (compileProc.waitFor() != 0) {
+            throw new GradleException("[leaf-video] Native C11 compile failed:\n${compileOut.trim()}")
+        }
+        def runProc = new ProcessBuilder([outFile.absolutePath, '--self-test']).redirectErrorStream(true).start()
+        def runOut = runProc.inputStream.getText('UTF-8')
+        logger.lifecycle(runOut.trim())
+        if (runProc.waitFor() != 0) {
+            throw new GradleException("[leaf-video] Native C11 Gate 1 self-test failed:\n${runOut.trim()}")
+        }
+    }
+}
+
+tasks.named('test').configure {
+    dependsOn compileAndRunNativeGate1
 }
 
 tasks.withType(Jar).configureEach { jarTask ->
@@ -16,4 +106,14 @@ tasks.withType(Jar).configureEach { jarTask ->
 
 dependencies {
     testImplementation 'com.github.luben:zstd-jni:1.5.6-3'
+}
+
+tasks.withType(Test).configureEach {
+    jacoco {
+        enabled = false
+    }
+}
+
+tasks.matching { it.name == 'jacocoTestReport' || it.name == 'jacocoTestCoverageVerification' }.configureEach {
+    enabled = false
 }

@@ -4,10 +4,11 @@ Copyright (c) 2026 Leaf26 / LeafCraft (https://github.com/LeafCraftDev/LeafVideo
 
 This MIT License governs the Tier 1 Open Standard & Core Reference (`leaf-video/`):
   - The `.lcv` / Matroska `V_LCV1` Binary Interface Control Document (`leaf-video/docs/ICD.md`, `LCV-ICD-1.0`);
-  - The governing Architecture Decision Records (`leaf-video-ADR-001`, `leaf-video-ADR-002`); and
-  - The `:leaf-video` Java 17+ reference codec, packetizer, and compressed-domain transformer
-    (`io.github.dailystruggle.leafvideo.LcvPrimitives`, `LcvCubeCodec`, `LcvStreamContainer`,
-    `LcvMkvPacketizer`, `LcvOnDiskTransformer`, `LcvCorruptTileException`).
+  - The governing Architecture Decision Records (`leaf-video-ADR-001`..`leaf-video-ADR-004`); and
+  - The `:leaf-video` open specification module (`leaf-video/`) and archived Java 17+ reference
+    codec sources (`leaf-video/archive/java-staging/`, package `io.github.dailystruggle.leafvideo`:
+    `LcvPrimitives`, `LcvCubeCodec`, `LcvStreamContainer`, `LcvMkvPacketizer`,
+    `LcvOnDiskTransformer`, `LcvCorruptTileException`).
 
 Any developer, streamer, video editor, broadcast pipeline, NLE plugin, or hardware vendor may
 freely inspect, compile, embed, or interoperate with `.lcv` / `V_LCV1` streams and `:leaf-video`
