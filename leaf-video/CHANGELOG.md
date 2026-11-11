@@ -2,7 +2,9 @@
 
 All notable changes to `LeafVideo` (`:leaf-video` & `LCV-ICD-1.0`) are documented in this file.
 
-## [0.1.0] - 2026-11-08
+## [Unreleased]
+
+## [0.1.0] - Unreleased
 
 ### Added
 - **Normative Binary Interface Control Document (`LCV-ICD-1.0`, `leaf-video/docs/ICD.md`, MIT):** Defines the self-indexing `64-byte` `"LCV_V001"` `Superblock` header (with reflected IEEE 802.3 `CRC-32` over bytes `0x00..0x3B`), 2D and `16/32/64` quadtree-coalesced `uint64` tile pointer directories (`LCV_COLOR_FLAG_QUADTREE_DIR = 0x80`), Extended Hamming `(72, 64)` `SEC-DED` pointer syndrome table (`1 B/word`), split Section 4A (Base MSB Slice Pool) and Section 4B (Tail LSB Slice Pool with direct $O(1)$ `lsbTileOffsets[N_tiles]`), non-temporal log-structured slack/superseded framing (`LCV_FLAG_SUPERSEDED_OR_SLACK = 0x10`), Matroska `.mkv` (`CodecID = "V_LCV1"`) and `LCVU` UDP datagram framing, and `tuningProfile16` operating profiles (`ARCHIVAL_LOSSLESS`, `OBS_REALTIME_LOSSLESS`, `WIRELESS_FOVEATED_LOW_LATENCY`, `HARSH_RF_UEP_ZERO_WAIT`, `VR_STEREO_FOVEATED_DIRECT`, `STUDIO_MEZZANINE_12BIT`).
